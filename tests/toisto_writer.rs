@@ -152,7 +152,8 @@ fn run_test_for_files(json_filenames: &[String], verbose: bool, no_errors: bool)
     let mut count_fail = 0;
     let mut count_ignore = 0;
     for json_filename in json_filenames {
-        if ignored.contains(&json_filename.as_ref()) {
+        let json_filename_dashed = json_filename.replace('\\', "/"); // for Windows
+        if ignored.contains(&json_filename_dashed.as_ref()) {
             count_ignore += 1;
             if verbose {
                 println!("IGNORE: {}", json_filename);
