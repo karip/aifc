@@ -1,0 +1,3 @@
+[submodule "toisto-aiff-test-suite"]
+	path = toisto-aiff-test-suite
+	url = https://github.com/karip/toisto-aiff-test-suite.git

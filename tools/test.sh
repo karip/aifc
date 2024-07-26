@@ -16,11 +16,13 @@ cargo test --release --features internal-no-panic
 echo
 echo 'Toisto AIFF test suite results:'
 echo
+echo 'multi:'
 
 cd toisto-aiff-test-suite
 python3 toisto-runner.py -c --override-list ../toisto-aifc-override-list.json ../target/debug/examples/aifc-toisto multi
 
 echo
+echo 'single:'
 
 python3 toisto-runner.py -c --override-list ../toisto-aifc-override-list.json ../target/debug/examples/aifc-toisto single
 
