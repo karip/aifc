@@ -521,9 +521,7 @@ impl<W: Write + Seek> AifcWriter<W> {
     fn write_ssnd_header(&mut self, datalen: usize, current_pos: u64) -> AifcResult<()> {
         if self.samples_written == 0 && datalen > 0 {
             self.ssnd_chunk_size_pos = Some(wchecked_add(current_pos, 4)?);
-            self.handle.write_all(&[
-                b'S', b'S', b'N', b'D',
-            ])?;
+            self.handle.write_all(b"SSND")?;
             const INITIAL_SSND_SIZE: u32 = 8;
             self.handle.write_all(&INITIAL_SSND_SIZE.to_be_bytes())?;
             self.handle.write_all(&[
@@ -608,8 +606,7 @@ fn write_header(write: &mut dyn Write, info: &AifcWriteInfo, sample_size: u8) ->
                 _ => { return Err(AifcError::InvalidParameter); }
             };
             comm_num_sample_frames_pos = 22;
-            write.write_all(&[ b'F', b'O', b'R', b'M', 0, 0, 0, 30 ])?;
-            write.write_all(&[ b'A', b'I', b'F', b'F' ])?;
+            write.write_all(&[ b'F', b'O', b'R', b'M', 0, 0, 0, 30, b'A', b'I', b'F', b'F' ])?;
             write.write_all(&[ b'C', b'O', b'M', b'M', 0, 0, 0, 18 ])?;
             write.write_all(&info.channels.to_be_bytes())?; // num_channels
             write.write_all(&[0, 0, 0, 0 ])?; // num_sample_frames
@@ -620,8 +617,7 @@ fn write_header(write: &mut dyn Write, info: &AifcWriteInfo, sample_size: u8) ->
             const COMPR_LEN: u8 = 0;
             const COMPR_NAME: &[u8] = &[ 0 ];
             comm_num_sample_frames_pos = 34;
-            write.write_all(&[ b'F', b'O', b'R', b'M', 0, 0, 0, 48 ])?;
-            write.write_all(&[ b'A', b'I', b'F', b'C' ])?;
+            write.write_all(&[ b'F', b'O', b'R', b'M', 0, 0, 0, 48, b'A', b'I', b'F', b'C' ])?;
             write.write_all(&[ b'F', b'V', b'E', b'R', 0, 0, 0, 4, 0xA2, 0x80, 0x51, 0x40 ])?;
             write.write_all(&[ b'C', b'O', b'M', b'M', 0, 0, 0, 24 ])?;
             write.write_all(&info.channels.to_be_bytes())?; // num_channels
