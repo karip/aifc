@@ -33,9 +33,9 @@ cd toisto-aiff-test-suite
 
 # target/debug for normal testing,
 # x86_64-unknown-linux-gnu and powerpc-unknown-linux-gnu for GitHub Actions
-if [ -e ../target/x86_64-unknown-linux-gnu/debug/examples/ausnd-aureader-toisto ]; then
+if [ -e ../target/x86_64-unknown-linux-gnu/debug/examples/aifc-toisto ]; then
     python3 toisto-runner.py -c -v --override-list ../toisto-aifc-override-list.json ../target/x86_64-unknown-linux-gnu/debug/examples/aifc-toisto multi
-elif [ -e ../target/powerpc-unknown-linux-gnu/debug/examples/ausnd-aureader-toisto ]; then
+elif [ -e ../target/powerpc-unknown-linux-gnu/debug/examples/aifc-toisto ]; then
     python3 toisto-runner.py -c -v --override-list ../toisto-aifc-override-list.json ../target/powerpc-unknown-linux-gnu/debug/examples/aifc-toisto multi
 else
     python3 toisto-runner.py -c --override-list ../toisto-aifc-override-list.json ../target/debug/examples/aifc-toisto multi
@@ -44,9 +44,9 @@ fi
 echo
 echo 'single:'
 
-if [ -e ../target/x86_64-unknown-linux-gnu/debug/examples/ausnd-aureader-toisto ]; then
+if [ -e ../target/x86_64-unknown-linux-gnu/debug/examples/aifc-toisto ]; then
     python3 toisto-runner.py -c -v --override-list ../toisto-aifc-override-list.json ../target/x86_64-unknown-linux-gnu/debug/examples/aifc-toisto single
-elif [ -e ../target/powerpc-unknown-linux-gnu/debug/examples/ausnd-aureader-toisto ]; then
+elif [ -e ../target/powerpc-unknown-linux-gnu/debug/examples/aifc-toisto ]; then
     python3 toisto-runner.py -c -v --override-list ../toisto-aifc-override-list.json ../target/powerpc-unknown-linux-gnu/debug/examples/aifc-toisto single
 else
     python3 toisto-runner.py -c --override-list ../toisto-aifc-override-list.json ../target/debug/examples/aifc-toisto single
