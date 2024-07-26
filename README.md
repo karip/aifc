@@ -16,7 +16,7 @@ Features:
 Out of scope:
 
  - conversion between different sample formats (e.g., i16 to f32). There's
-   [so many ways](http://blog.bjornroche.com/2009/12/int-float-int-its-jungle-out-there.html)
+   [so many ways](https://web.archive.org/web/20240224192658/http://blog.bjornroche.com/2009/12/int-float-int-its-jungle-out-there.html)
    to do the conversion that it's better that this crate doesn't do it.
 
 ## Usage
