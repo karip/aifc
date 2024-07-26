@@ -184,7 +184,7 @@ pub fn jsonify<T>(reader: &mut aifc::AifcReader<T>) -> aifc::AifcResult<String>
             if let Ok(Some(size)) = reader.read_chunk_id3(&mut []) {
                 let mut data = vec![0; size];
                 reader.read_chunk_id3(&mut data)?;
-                let tag = id3::Tag::read_from(std::io::Cursor::new(&data))
+                let tag = id3::Tag::read_from2(std::io::Cursor::new(&data))
                     .expect("bad id3 data");
                 json += &format!("        \"id3\": {{");
                 let mut framelist = vec![];
