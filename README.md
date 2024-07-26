@@ -1,5 +1,7 @@
 # AIFC
 
+[![Cross-platform tests](https://github.com/karip/aifc/actions/workflows/cross-test.yml/badge.svg)](https://github.com/karip/aifc/actions/workflows/cross-test.yml)
+
 Rust library to read and write AIFF and AIFF-C (AIFC) audio format.
 
 Features:
