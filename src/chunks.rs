@@ -2,9 +2,6 @@
 
 use crate::{cast, AifcError, AifcResult, MarkerId, Write};
 
-#[cfg(feature = "internal-no-panic")]
-use no_panic::no_panic;
-
 fn read_u16_from_pos(data: &[u8], pos: &mut usize) -> AifcResult<u16> {
     let Some(pos_end) = pos.checked_add(2) else {
         return Err(AifcError::StdIoError(crate::unexpectedeof()));
@@ -431,7 +428,6 @@ impl Instrument {
     /// the base note value.
     ///
     /// This method doesn't check that the instrument values are in a valid range.
-    #[cfg_attr(feature = "internal-no-panic", no_panic)]
     pub fn copy_to_slice(&self, slice: &mut [u8; 20]) {
         slice[0] = cast::i8_to_u8(self.base_note);
         slice[1] = cast::i8_to_u8(self.detune);

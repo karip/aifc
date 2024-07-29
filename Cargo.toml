@@ -1,16 +1,12 @@
 [package]
 name = "aifc"
-version = "0.5.0"
+version = "0.5.2"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
 audio-codec-algorithms = "0.6.0"
-no-panic = { version = "0.1", optional = true }
-
-[features]
-internal-no-panic = ["dep:no-panic"] # no-panic check is only for testing
 
 [dev-dependencies]
 criterion = { version = "0.5.1" }

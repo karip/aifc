@@ -34,7 +34,7 @@ for sample in reader.samples().expect("Can't iterate samples") {
 }
 ```
 
-Writing AIFF-C file (with the default 2 channels, 16 bits/sample, sample rate 44100):
+Writing AIFF-C file with the default 2 channels, 16 bits/sample and sample rate 44100:
 
 ```rust, no_run
 let mut stream = std::io::BufWriter::new(std::fs::File::create("test.aiff").expect("Open failed"));

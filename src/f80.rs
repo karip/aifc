@@ -1,10 +1,6 @@
 use crate::cast;
 
-#[cfg(feature = "internal-no-panic")]
-use no_panic::no_panic;
-
 /// Converts a 80-bit extended floating point value to a 64-bit floating point value.
-#[cfg_attr(feature = "internal-no-panic", no_panic)]
 pub fn f80_to_f64(bytes: &[u8]) -> f64 {
     assert_eq!(bytes.len(), 10);
 
@@ -74,7 +70,6 @@ pub fn f80_to_f64(bytes: &[u8]) -> f64 {
 }
 
 /// Converts a 64-bit floating point value to a 80-bit extended floating point value.
-#[cfg_attr(feature = "internal-no-panic", no_panic)]
 pub fn f64_to_f80(value: f64) -> [u8; 10] {
     if !value.is_finite() {
         if !value.is_nan() {

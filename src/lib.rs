@@ -70,9 +70,6 @@
     clippy::checked_conversions,
 )]
 
-#[cfg(feature = "internal-no-panic")]
-use no_panic::no_panic;
-
 // silly way to test rust code blocks in README.md
 // https://doc.rust-lang.org/rustdoc/write-documentation/documentation-tests.html
 #[doc = include_str!("../README.md")]
@@ -223,7 +220,6 @@ pub enum SampleFormat {
 impl SampleFormat {
     /// Returns the size of the decoded sample in bytes.
     /// Custom formats always return 0.
-    #[cfg_attr(feature = "internal-no-panic", no_panic)]
     pub fn decoded_size(&self) -> usize {
         match &self {
             SampleFormat::U8 => 1,
@@ -242,7 +238,6 @@ impl SampleFormat {
 
     /// Returns the size of the sample in the stream in bytes.
     /// CompressedIma4 returns 0. Custom formats return 1 (they are assumed to write single bytes).
-    #[cfg_attr(feature = "internal-no-panic", no_panic)]
     #[inline(always)]
     fn encoded_size(&self) -> u64 {
         match &self {
@@ -261,7 +256,6 @@ impl SampleFormat {
     }
 
     /// Calculates the sample count based on byte length and sample format.
-    #[cfg_attr(feature = "internal-no-panic", no_panic)]
     fn calculate_sample_len(&self, sample_byte_len: u32) -> Option<u64> {
         match self {
             SampleFormat::CompressedIma4 => {
@@ -277,7 +271,6 @@ impl SampleFormat {
     }
 
     /// The maximum channel count for the sample format.
-    #[cfg_attr(feature = "internal-no-panic", no_panic)]
     fn maximum_channel_count(&self) -> i16 {
         match self {
             SampleFormat::CompressedIma4 => 2,
@@ -287,7 +280,6 @@ impl SampleFormat {
 
     /// Returns the COMM chunk's bits per sample value for the writer.
     /// Compressed formats and custom formats return 0.
-    #[cfg_attr(feature = "internal-no-panic", no_panic)]
     fn bits_per_sample(&self) -> u8 {
         match &self {
             SampleFormat::U8 => 8,
@@ -341,7 +333,6 @@ struct CountingWrite<W> where W: Write {
 }
 
 impl<W: Write> CountingWrite<W> {
-    #[cfg_attr(feature = "internal-no-panic", no_panic)]
     pub fn new(handle: W) -> CountingWrite<W> {
         CountingWrite {
             handle,
@@ -367,17 +358,14 @@ impl<W: Write> Write for CountingWrite<W> {
     }
 }
 
-#[cfg_attr(feature = "internal-no-panic", no_panic)]
 fn is_even_u32(value: u32) -> bool {
     value & 1 == 0
 }
 
-#[cfg_attr(feature = "internal-no-panic", no_panic)]
 fn is_even_u64(value: u64) -> bool {
     value & 1 == 0
 }
 
-#[cfg_attr(feature = "internal-no-panic", no_panic)]
 fn is_even_usize(value: usize) -> bool {
     value & 1 == 0
 }

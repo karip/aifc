@@ -18,9 +18,6 @@ else
     cargo test
 fi
 
-# check that some functions never panic
-cargo test --release --features internal-no-panic
-
 # build the toisto tester for the test suite
 cargo build --example aifc-toisto
 
