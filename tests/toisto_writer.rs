@@ -161,8 +161,7 @@ fn run_test_for_files(json_filenames: &[String], verbose: bool, no_errors: bool)
             continue;
         }
         let src_json = parse_json_file(&json_filename);
-        if src_json.result == Some("ignore".to_string()) ||
-            src_json.result == Some("invalid".to_string()) {
+        if src_json.result == Some("ignore".to_string()) {
             count_ignore += 1;
             if verbose {
                 println!("IGNORE: {}", json_filename);
