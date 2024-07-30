@@ -1,9 +1,15 @@
 [package]
 name = "aifc"
-version = "0.5.2"
+version = "0.5.3"
+description = "Reader and writer for the AIFF and AIFF-C audio format"
+repository = "https://github.com/karip/aifc"
+license = "MIT OR Apache-2.0"
+keywords = ["audio", "aiff", "codec"]
+categories = ["multimedia::audio", "multimedia::encoding"]
 edition = "2021"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+exclude = [
+    "toisto-aiff-test-suite/*",
+]
 
 [dependencies]
 audio-codec-algorithms = "0.6.0"
