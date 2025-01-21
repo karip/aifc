@@ -97,7 +97,7 @@ pub struct Samples<'a, R> {
 
 impl<'a, R> Samples<'a, R> {
     /// Creates a new sample iterator.
-    fn new(samples_left: u64, reader: &'a mut R) -> Samples<R> {
+    fn new(samples_left: u64, reader: &'a mut R) -> Samples<'a, R> {
         Samples {
             samples_left,
             reader
@@ -106,7 +106,7 @@ impl<'a, R> Samples<'a, R> {
 }
 
 /// Iterator implementation for samples.
-impl<'a, R: SampleRead> Iterator for Samples<'a, R> {
+impl<R: SampleRead> Iterator for Samples<'_, R> {
     type Item = AifcResult<Sample>;
 
     /// Reads the next sample.
@@ -146,7 +146,7 @@ pub struct Chunks<'a, R> {
 
 impl<'a, R: ChunkRead> Chunks<'a, R> {
     /// Creates a new chunk iterator.
-    fn new(total_chunk_count: u32, reader: &'a mut R) -> Chunks<R> {
+    fn new(total_chunk_count: u32, reader: &'a mut R) -> Chunks<'a, R> {
         Chunks {
             reader,
             chunks_left: total_chunk_count,
@@ -167,7 +167,7 @@ impl<'a, R: ChunkRead> Chunks<'a, R> {
 }
 
 /// Iterator implementation for chunks.
-impl<'a, R: ChunkRead> Iterator for Chunks<'a, R> {
+impl<R: ChunkRead> Iterator for Chunks<'_, R> {
     type Item = AifcResult<ChunkRef>;
 
     /// Reads the next chunk.
@@ -252,7 +252,7 @@ impl<R: Read> SeekableRead<R> {
 /// When reading samples, channel data is interleaved. The stream can also be seeked to
 /// a specific sample position.
 ///
-/// Data reading is done on demand. The reader doesn’t perform much buffering, so it’s
+/// Data reading is done on demand. The reader doesn't perform much buffering, so it's
 /// recommended to use a buffered reader with it.
 ///
 /// # Errors
@@ -480,12 +480,9 @@ impl<R: Read> AifcReader<R> {
             }
             self.stream.seek(SeekFrom::Start(pos))?;
         }
-        match &mut self.info {
-            Some(i) => {
-                i.sample_byte_len = sample_byte_len;
-                i.sample_len = i.sample_format.calculate_sample_len(sample_byte_len);
-            },
-            None => {}
+        if let Some(i) = &mut self.info {
+            i.sample_byte_len = sample_byte_len;
+            i.sample_len = i.sample_format.calculate_sample_len(sample_byte_len);
         }
         self.comm_compression_name_start = comm_compression_name_start;
         self.comm_compression_name_len = comm_compression_name_len;
@@ -662,7 +659,7 @@ impl<R: Read> AifcReader<R> {
     /// Gets a reference to the underlying reader.
     ///
     /// It is not recommended to directly read from the underlying reader
-    /// as it may corrupt this reader’s state.
+    /// as it may corrupt this reader's state.
     pub const fn get_ref(&self) -> &R {
         &self.stream.stream
     }

@@ -81,7 +81,7 @@ pub struct Marker<'a> {
     pub name: &'a [u8],
 }
 
-impl<'a> Marker<'a> {
+impl Marker<'_> {
     /// Writes the given markers to the given stream. The maximum marker count is 65535.
     /// The first bytes written contains the marker count.
     pub fn write_chunk_data(write: &mut dyn Write, markers: &[Marker]) -> AifcResult<()> {
@@ -166,7 +166,7 @@ impl<'a> Iterator for Markers<'a> {
     }
 }
 
-impl<'a> ExactSizeIterator for Markers<'a> {
+impl ExactSizeIterator for Markers<'_> {
     // just use the default implementation
 }
 
@@ -190,7 +190,7 @@ pub struct Comment<'a> {
     pub text: &'a [u8],
 }
 
-impl<'a> Comment<'a> {
+impl Comment<'_> {
     /// Returns the comment timestamp (relative to 1904-01-01T00:00:00) as
     /// a UNIX timestamp (relative to 1970-01-01T00:00:00). The result can be a positive or
     /// a negative value.
@@ -314,7 +314,7 @@ impl<'a> Iterator for Comments<'a> {
     }
 }
 
-impl<'a> ExactSizeIterator for Comments<'a> {
+impl ExactSizeIterator for Comments<'_> {
     // just use the default implementation
 }
 

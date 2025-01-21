@@ -63,7 +63,7 @@ impl Default for AifcWriteInfo {
 /// It isn't enough to just drop `AifcWriter` or call [`flush()`](AifcWriter::flush()),
 /// because the stream wouldn't be padded and updated correctly.
 ///
-/// The writer doesn’t perform any buffering, so it’s recommended to use a buffered writer with it.
+/// The writer doesn't perform any buffering, so it's recommended to use a buffered writer with it.
 ///
 /// # Errors
 ///
