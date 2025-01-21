@@ -913,7 +913,7 @@ impl<R: Read + Seek> AifcReader<R> {
     /// The entire stream won't be scanned for the chunk, which makes this more efficient than
     /// reading the chunk with `chunks()`.
     ///
-    /// The returned bytes can be parsed with [`Markers`](crate::Markers).
+    /// The bytes read into `buf` can be parsed with [`Markers`](crate::Markers).
     ///
     /// # Examples
     ///
@@ -960,7 +960,7 @@ impl<R: Read + Seek> AifcReader<R> {
     /// The entire stream won't be scanned for the chunk, which makes this more efficient than
     /// reading the chunk with `chunks()`.
     ///
-    /// The returned bytes can be parsed with [`Comments`](crate::Comments).
+    /// The bytes read into `buf` can be parsed with [`Comments`](crate::Comments).
     ///
     /// # Examples
     ///
@@ -970,10 +970,10 @@ impl<R: Read + Seek> AifcReader<R> {
     /// # let mut aifcreader = aifc::AifcReader::new(&mut rd)?;
     /// # let info = aifcreader.read_info()?;
     /// if let Some(size) = aifcreader.read_chunk_comments(&mut [])? {
-    ///     let mut comment_buf = vec![0; size];
-    ///     aifcreader.read_chunk_comments(&mut comment_buf)?;
+    ///     let mut comments_buf = vec![0; size];
+    ///     aifcreader.read_chunk_comments(&mut comments_buf)?;
     ///     // parse comments from the byte buffer
-    ///     let comments: Vec<aifc::AifcResult<aifc::Comment>> = aifc::Comments::new(&comment_buf)?
+    ///     let comments: Vec<aifc::AifcResult<aifc::Comment>> = aifc::Comments::new(&comments_buf)?
     ///         .collect();
     ///     println!("Comments: {:?}", comments);
     /// }
@@ -1007,7 +1007,23 @@ impl<R: Read + Seek> AifcReader<R> {
     /// The entire stream won't be scanned for the chunk, which makes this more efficient than
     /// reading the chunk with `chunks()`.
     ///
-    /// The returned bytes can be parsed using external ID3 parsers.
+    /// The bytes read into `buf` can be parsed using external ID3 parsers.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// # fn example() -> aifc::AifcResult<()> {
+    /// # let mut rd = std::io::BufReader::new(std::fs::File::open("test.aiff")?);
+    /// # let mut aifcreader = aifc::AifcReader::new(&mut rd)?;
+    /// # let info = aifcreader.read_info()?;
+    /// if let Some(size) = aifcreader.read_chunk_id3(&mut [])? {
+    ///     let mut id3_buf = vec![0; size];
+    ///     aifcreader.read_chunk_id3(&mut id3_buf)?;
+    ///     // parse id3 tags from id3_buf using a third-party id3 parser..
+    /// }
+    /// # Ok(())
+    /// # }
+    /// ```
     pub fn read_chunk_id3(&mut self, buf: &mut [u8]) -> AifcResult<Option<usize>> {
         if self.is_single_pass {
             return Err(AifcError::SeekError);
