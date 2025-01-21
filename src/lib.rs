@@ -36,7 +36,7 @@
 //! # }
 //! ```
 //!
-//! ## Text decoding
+//! # Text decoding
 //!
 //! AIFF and AIFF-C originally support ASCII only text in their metadata chunks (NAME, ANNO, etc.).
 //! In addition to ASCII, older apps may have used ISO-8859-1 and newer apps may have used UTF-8.
@@ -182,7 +182,7 @@ pub enum FileFormat {
 
 /// Sample format.
 ///
-/// Unsupported sample formats are represented as Custom values.
+/// Unsupported sample formats are represented as `Custom` values.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum SampleFormat {
     /// Unsigned 8-bit integer sample format.

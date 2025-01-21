@@ -62,7 +62,8 @@ pub struct AifcReadInfo {
     /// Number of audio frames. This is a value directly read from the COMM chunk.
     ///
     /// This value may differ from the actual audio frame count to be read, because
-    /// the actual audio frame count is based on the SSND chunk size.
+    /// the actual audio frame count is based on the SSND chunk size. So, it's usually better
+    /// to use `sample_len` instead of this field.
     pub comm_num_sample_frames: u32,
 
     /// Sample size in bits. This is a value directly read from the COMM chunk.
