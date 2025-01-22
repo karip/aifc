@@ -381,7 +381,7 @@ impl<R: Read> AifcReader<R> {
             sample_byte_read_pos: hdr.sample_byte_start_pos,
             sample_read_pos: 0,
             needs_to_seek_to_read_pos: false,
-            total_chunk_count: hdr.total_chunk_count,
+            total_chunk_count: 0,
             marker_chunkref: hdr.marker_chunkref,
             comments_chunkref: hdr.comments_chunkref,
             id3_chunkref: hdr.id3_chunkref,
