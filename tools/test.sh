@@ -13,7 +13,7 @@ cargo clippy -- -D warnings
 cargo doc
 
 # run tests - no capture if running under GitHub Actions
-if [ "$GITHUB_ACTIONS" == "true" ]; then
+if [ "$GITHUB_ACTIONS" = "true" ]; then
     cargo test -- --nocapture
 else
     cargo test
