@@ -16,8 +16,6 @@ pub enum AifcError {
     CommChunkNotFoundBeforeSsndChunk,
     /// Invalid number of channels.
     InvalidNumberOfChannels,
-    /// Invalid read state.
-    InvalidReadState,
     /// Invalid write state.
     InvalidWriteState,
     /// The size is too large.
