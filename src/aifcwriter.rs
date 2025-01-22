@@ -272,7 +272,9 @@ impl<W: Write + Seek> AifcWriter<W> {
         Comment::write_chunk_data(&mut self.handle, comments)
     }
 
-    /// Writes the given ID3 data to the stream.
+    /// Writes the given ID3 data to the stream. When writing ID3 data to a file, it is typically
+    /// written to the end of the file so that ID3 tools can easily modify it without
+    /// rewriting the entire file.
     ///
     /// Note that ID3 data should be written only once to the stream, but
     /// this method doesn't check that.

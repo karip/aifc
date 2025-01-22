@@ -307,17 +307,17 @@ pub struct AifcReader<R> {
     // for multi-pass
 
     /// Flag to indicate that read_sample() must seek to sample_byte_read_pos,
-    /// because chunk reading has seeked the stream
+    /// because chunk reading has seeked the stream.
     needs_to_seek_to_read_pos: bool,
 
     /// Total number of chunks in the stream. Zero for single-pass reader.
     total_chunk_count: u32,
 
-    /// marker chunk data
+    /// Marker chunk data.
     marker_chunkref: Option<ChunkRef>,
-    /// comments chunk data
+    /// Comments chunk data.
     comments_chunkref: Option<ChunkRef>,
-    /// id3 chunk data
+    /// ID3 chunk data.
     id3_chunkref: Option<ChunkRef>,
     /// Compression name start position in bytes.
     comm_compression_name_start: u64,
