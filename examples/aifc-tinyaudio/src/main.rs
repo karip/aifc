@@ -22,8 +22,7 @@ fn main() {
         .expect("Can't open file"));
     let mut reader = aifc::AifcReader::new(bufreader)
         .expect("Can't create reader");
-    let info = reader.read_info()
-        .expect("Can't read audio info from the file");
+    let info = reader.info();
 
     if !info.sample_rate.is_finite() || info.sample_rate < 0.01 {
         eprintln!("Invalid sample rate: {}", info.sample_rate);

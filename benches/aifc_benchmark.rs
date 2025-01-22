@@ -45,7 +45,6 @@ fn criterion_benchmark(c: &mut Criterion) {
     c.bench_function("samples_iterator", |b| b.iter(|| {
         let cursor = Cursor::new(&aifc_data);
         let mut reader = AifcReader::new(cursor).expect("reader failed");
-        let _ = reader.read_info().expect("read_info failed");
         for s in reader.samples().expect("no iterator") {
             black_box(match s.expect("iter failed") {
                 aifc::Sample::U8(_) => {},
@@ -62,7 +61,6 @@ fn criterion_benchmark(c: &mut Criterion) {
     c.bench_function("read_sample", |b| b.iter(|| {
         let cursor = Cursor::new(&aifc_data);
         let mut reader = AifcReader::new(cursor).expect("reader failed");
-        let _ = reader.read_info().expect("read_info failed");
         while let Some(s) = reader.read_sample().expect("sample error") {
             black_box(match s {
                 aifc::Sample::U8(_) => {},

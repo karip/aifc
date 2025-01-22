@@ -8,17 +8,7 @@ pub fn jsonify<T>(reader: &mut aifc::AifcReader<T>) -> aifc::AifcResult<String>
     where T: std::io::Read + std::io::Seek {
 
     let mut json = String::new();
-
-    let info = match reader.read_info() {
-        Err(AifcError::StdIoError(e)) => {
-            return Ok(format!("{{ \"error\": {:?} }}", e.to_string()));
-        },
-        Err(error) => {
-            let msg = format!("{:?}", error);
-            return Ok(format!("{{ \"error\": \"{}\" }}", msg.replace("\"", "'")));
-        },
-        Ok(val) => val
-    };
+    let info = reader.info();
 
     // print json
 

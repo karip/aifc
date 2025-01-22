@@ -247,9 +247,6 @@ impl<R: Read> SeekableRead<R> {
 /// `AifcReader` takes a stream which implements `Read` or `Read+Seek`.
 /// It can read audio sample data and any other chunk data.
 ///
-/// After creating the reader, the [`read_info()`](AifcReader::read_info()) method must be
-/// called before the other methods are called.
-///
 /// When reading samples, channel data is interleaved. The stream can also be seeked to
 /// a specific sample position.
 ///
@@ -263,13 +260,13 @@ impl<R: Read> SeekableRead<R> {
 ///
 /// # Examples
 ///
-/// Reading samples:
+/// Reading audio info and samples:
 ///
 /// ```no_run
 /// # fn example() -> aifc::AifcResult<()> {
 /// let mut rd = std::io::BufReader::new(std::fs::File::open("test.aiff")?);
 /// let mut reader = aifc::AifcReader::new(&mut rd)?;
-/// let info = reader.read_info()?;
+/// let info = reader.info();
 /// for sample in reader.samples()? {
 ///     println!("Got sample {:?}", sample.expect("sample read error"));
 /// }
@@ -277,15 +274,15 @@ impl<R: Read> SeekableRead<R> {
 /// # }
 /// ```
 /// Reading sample data as raw bytes (useful for reading unsupported compression types).
-/// The stream position is guaranteed to be at the first sample position after `read_info()`
-/// has been called.
+/// The stream position is guaranteed to be at the first sample position after `AifcReader`
+/// has been created.
 ///
 /// ```no_run
 /// # fn example() -> aifc::AifcResult<()> {
 /// use std::io::Read;
 /// let mut rd = std::io::BufReader::new(std::fs::File::open("test.aiff")?);
 /// let mut reader = aifc::AifcReader::new(&mut rd)?;
-/// let info = reader.read_info()?;
+/// let info = reader.info();
 /// let mut ireader = reader.into_inner();
 /// let size = usize::try_from(info.sample_byte_len).expect("size too large");
 /// let mut raw_sample_data = vec![0u8; size];
@@ -299,7 +296,7 @@ pub struct AifcReader<R> {
     /// The underlying reader.
     stream: SeekableRead<R>,
     /// Info read from the stream.
-    info: Option<AifcReadInfo>,
+    info: AifcReadInfo,
     /// Sample start position in bytes.
     sample_byte_start_pos: u64,
     /// Sample read position in bytes.
@@ -343,9 +340,12 @@ pub struct AifcReader<R> {
 
 impl<R: Read> AifcReader<R> {
     /// Creates a new single pass `AifcReader` for a stream implementing the `Read` trait.
+    ///
+    /// Header data is read immediately from the inner reader. After that, the stream position
+    /// is at the start of the sample data.
     pub fn new_single_pass(stream: R) -> AifcResult<AifcReader<R>> {
         // SeekableRead which can only be seeked forward
-        let sread = SeekableRead {
+        let mut sread = SeekableRead {
             stream,
             current_pos: 0,
             initial_pos: 0,
@@ -372,128 +372,30 @@ impl<R: Read> AifcReader<R> {
                 Ok(())
             },
         };
+        let hdr = read_header(&mut sread, true)?;
         Ok(AifcReader {
             is_single_pass: true,
             stream: sread,
-            info: None,
-            sample_byte_start_pos: 0,
-            sample_byte_read_pos: 0,
+            info: hdr.info,
+            sample_byte_start_pos: hdr.sample_byte_start_pos,
+            sample_byte_read_pos: hdr.sample_byte_start_pos,
             sample_read_pos: 0,
             needs_to_seek_to_read_pos: false,
-            total_chunk_count: 0,
-            marker_chunkref: None,
-            comments_chunkref: None,
-            id3_chunkref: None,
-            comm_compression_name_start: 0,
-            comm_compression_name_len: 0,
+            total_chunk_count: hdr.total_chunk_count,
+            marker_chunkref: hdr.marker_chunkref,
+            comments_chunkref: hdr.comments_chunkref,
+            id3_chunkref: hdr.id3_chunkref,
+            comm_compression_name_start: hdr.comm_compression_name_start,
+            comm_compression_name_len: hdr.comm_compression_name_len,
             ima4_sample_buffer_byte_pos: None,
             ima4_sample_buffer: [0i16; 128],
             ima4_state: [ AdpcmImaState::new(), AdpcmImaState::new() ]
         })
     }
 
-    /// Reads [`AifcReadInfo`] from the data stream. The data is validated and an error is
-    /// returned if the stream contains invalid data.
-    /// For instance, zero or negative number of channels returns an error.
-    pub fn read_info(&mut self) -> AifcResult<AifcReadInfo> {
-        if self.info.is_some() {
-            return Err(AifcError::InvalidReadState);
-        }
-        let (formid, formsize) = read_chunkid_and_size(&mut self.stream)?;
-        if formid != crate::CHUNKID_FORM {
-            return Err(AifcError::UnrecognizedFormat);
-        }
-        let aiffid = read_chunkid(&mut self.stream)?;
-        let file_format = match aiffid {
-            crate::CHUNKID_AIFF => FileFormat::Aiff,
-            crate::CHUNKID_AIFC => FileFormat::Aifc,
-            _ => { return Err(AifcError::UnrecognizedFormat); }
-        };
-        let mut pos: u64 = 12;
-        let mut sample_byte_len: u32 = 0;
-        let mut comm_compression_name_start = 0;
-        let mut comm_compression_name_len = 0;
-        let max_pos = rchecked_add(self.stream.initial_pos, u64::from(formsize))?;
-        while self.stream.current_pos < max_pos {
-            let (chid, chsize) = read_chunkid_and_size(&mut self.stream)?;
-            if !self.is_single_pass {
-                self.total_chunk_count += 1;
-                let cd = ChunkRef {
-                    id: chid,
-                    pos,
-                    size: chsize
-                };
-                match chid {
-                    crate::CHUNKID_MARK => {
-                        // store a reference to the first MARK chunk
-                        if self.marker_chunkref.is_none() {
-                            self.marker_chunkref = Some(cd.clone());
-                        }
-                    },
-                    crate::CHUNKID_COMT => {
-                        // store a reference to the first COMT chunk
-                        if self.comments_chunkref.is_none() {
-                            self.comments_chunkref = Some(cd.clone());
-                        }
-                    },
-                    crate::CHUNKID_ID3 => {
-                        // store a reference to the last ID3 chunk
-                        self.id3_chunkref = Some(cd.clone());
-                    },
-                    _ => {}
-                }
-            }
-
-            if chid == crate::CHUNKID_COMM {
-                let (info, cstart, clen) =
-                    read_comm_chunk(&mut self.stream, chsize, file_format, pos)?;
-                self.info = Some(info);
-                comm_compression_name_start = cstart;
-                comm_compression_name_len = clen;
-
-            } else if chid == crate::CHUNKID_SSND {
-                if chsize < 8 {
-                    return Err(AifcError::StdIoError(crate::unexpectedeof()));
-                }
-                let mut offset = [0u8; 4];
-                self.stream.read_exact(&mut offset)?;
-                let mut start_offset = u32::from_be_bytes(offset);
-                // start_offset can't be greater than chunk size
-                start_offset = start_offset.min(chsize - 8);
-                // note: the SSND blocksize value is not relevant for reading samples
-                let mut blocksize_ignored = [0u8; 4];
-                self.stream.read_exact(&mut blocksize_ignored)?;
-                let sample_start_pos = rchecked_add(pos, u64::from(start_offset)+8+8)?;
-                sample_byte_len = chsize - 8 - start_offset;
-                self.sample_byte_start_pos = sample_start_pos;
-                self.sample_byte_read_pos = sample_start_pos;
-                if self.is_single_pass {
-                    // check that COMM has been read - otherwise can't read samples
-                    if self.info.is_none() {
-                        return Err(AifcError::CommChunkNotFoundBeforeSsndChunk);
-                    }
-                    break; // break out of loop, ready to read samples
-                }
-            }
-            pos = rchecked_add(pos, u64::from(chsize) + 8)?;
-            if !crate::is_even_u32(chsize) { // odd chunk size has one pad byte
-                pos = rchecked_add(pos, 1)?;
-            }
-            self.stream.seek(SeekFrom::Start(pos))?;
-        }
-        if let Some(i) = &mut self.info {
-            i.sample_byte_len = sample_byte_len;
-            i.sample_len = i.sample_format.calculate_sample_len(sample_byte_len);
-        }
-        self.comm_compression_name_start = comm_compression_name_start;
-        self.comm_compression_name_len = comm_compression_name_len;
-        if self.sample_byte_start_pos > 0 {
-            self.stream.seek(SeekFrom::Start(self.sample_byte_start_pos))?;
-        }
-        match &self.info {
-            Some(i) => { Ok(i.clone()) },
-            None => { Err(AifcError::InvalidCommChunk) }
-        }
+    /// Returns a struct containing audio info, such as number of channels and sample rate.
+    pub fn info(&self) -> AifcReadInfo {
+        self.info.clone()
     }
 
     /// Reads one sample.
@@ -502,44 +404,41 @@ impl<R: Read> AifcReader<R> {
     /// (`SampleFormat::Custom`) or if reading from the underlying reader fails.
     #[inline(always)]
     pub fn read_sample(&mut self) -> AifcResult<Option<Sample>> {
-        let Some(info) = &self.info else {
-            return Err(AifcError::InvalidReadState);
-        };
-        if self.sample_read_pos >= info.sample_len.unwrap_or(0) {
+        if self.sample_read_pos >= self.info.sample_len.unwrap_or(0) {
             return Ok(None);
         }
         if self.needs_to_seek_to_read_pos {
             self.stream.seek(SeekFrom::Start(self.sample_byte_read_pos))?;
         }
         let sample;
-        match info.sample_format {
+        match self.info.sample_format {
             SampleFormat::U8 => {
                 let mut buf = [0u8; 1];
                 self.stream.read_exact(&mut buf)?;
                 sample = Ok(Some(Sample::U8(buf[0])));
                 self.sample_byte_read_pos = rchecked_add(self.sample_byte_read_pos,
-                    info.sample_format.encoded_size())?;
+                    self.info.sample_format.encoded_size())?;
             },
             SampleFormat::I8 => {
                 let mut buf = [0u8; 1];
                 self.stream.read_exact(&mut buf)?;
                 sample = Ok(Some(Sample::I8(cast::u8_to_i8(buf[0]))));
                 self.sample_byte_read_pos = rchecked_add(self.sample_byte_read_pos,
-                    info.sample_format.encoded_size())?;
+                    self.info.sample_format.encoded_size())?;
             },
             SampleFormat::I16 => {
                 let mut buf = [0u8; 2];
                 self.stream.read_exact(&mut buf)?;
                 sample = Ok(Some(Sample::I16(i16::from_be_bytes(buf))));
                 self.sample_byte_read_pos = rchecked_add(self.sample_byte_read_pos,
-                    info.sample_format.encoded_size())?;
+                    self.info.sample_format.encoded_size())?;
             },
             SampleFormat::I16LE => {
                 let mut buf = [0u8; 2];
                 self.stream.read_exact(&mut buf)?;
                 sample = Ok(Some(Sample::I16(i16::from_le_bytes(buf))));
                 self.sample_byte_read_pos = rchecked_add(self.sample_byte_read_pos,
-                    info.sample_format.encoded_size())?;
+                    self.info.sample_format.encoded_size())?;
             },
             SampleFormat::I24 => {
                 let mut buf = [0u8; 3];
@@ -550,35 +449,35 @@ impl<R: Read> AifcReader<R> {
                 }
                 sample = Ok(Some(Sample::I24(res)));
                 self.sample_byte_read_pos = rchecked_add(self.sample_byte_read_pos,
-                    info.sample_format.encoded_size())?;
+                    self.info.sample_format.encoded_size())?;
             },
             SampleFormat::I32 => {
                 let mut buf = [0u8; 4];
                 self.stream.read_exact(&mut buf)?;
                 sample = Ok(Some(Sample::I32(i32::from_be_bytes(buf))));
                 self.sample_byte_read_pos = rchecked_add(self.sample_byte_read_pos,
-                    info.sample_format.encoded_size())?;
+                    self.info.sample_format.encoded_size())?;
             },
             SampleFormat::I32LE => {
                 let mut buf = [0u8; 4];
                 self.stream.read_exact(&mut buf)?;
                 sample = Ok(Some(Sample::I32(i32::from_le_bytes(buf))));
                 self.sample_byte_read_pos = rchecked_add(self.sample_byte_read_pos,
-                    info.sample_format.encoded_size())?;
+                    self.info.sample_format.encoded_size())?;
             },
             SampleFormat::F32 => {
                 let mut buf = [0u8; 4];
                 self.stream.read_exact(&mut buf)?;
                 sample = Ok(Some(Sample::F32(f32::from_be_bytes(buf))));
                 self.sample_byte_read_pos = rchecked_add(self.sample_byte_read_pos,
-                    info.sample_format.encoded_size())?;
+                    self.info.sample_format.encoded_size())?;
             },
             SampleFormat::F64 => {
                 let mut buf = [0u8; 8];
                 self.stream.read_exact(&mut buf)?;
                 sample = Ok(Some(Sample::F64(f64::from_be_bytes(buf))));
                 self.sample_byte_read_pos = rchecked_add(self.sample_byte_read_pos,
-                    info.sample_format.encoded_size())?;
+                    self.info.sample_format.encoded_size())?;
             },
             SampleFormat::CompressedUlaw => {
                 let mut buf = [0u8; 1];
@@ -586,7 +485,7 @@ impl<R: Read> AifcReader<R> {
                 let val = buf[0];
                 sample = Ok(Some(Sample::I16(audio_codec_algorithms::decode_ulaw(val))));
                 self.sample_byte_read_pos = rchecked_add(self.sample_byte_read_pos,
-                    info.sample_format.encoded_size())?;
+                    self.info.sample_format.encoded_size())?;
             },
             SampleFormat::CompressedAlaw => {
                 let mut buf = [0u8; 1];
@@ -594,10 +493,10 @@ impl<R: Read> AifcReader<R> {
                 let val = buf[0];
                 sample = Ok(Some(Sample::I16(audio_codec_algorithms::decode_alaw(val))));
                 self.sample_byte_read_pos = rchecked_add(self.sample_byte_read_pos,
-                    info.sample_format.encoded_size())?;
+                    self.info.sample_format.encoded_size())?;
             },
             SampleFormat::CompressedIma4 => {
-                let channels_u64 = cast::clamp_i16_to_u64(info.channels);
+                let channels_u64 = cast::clamp_i16_to_u64(self.info.channels);
                 let sample_buffer_len = 64 * channels_u64;
                 let byte_pos = (self.sample_read_pos / sample_buffer_len) * (34*channels_u64);
                 let byte_pos = rchecked_add(byte_pos, self.sample_byte_start_pos)?;
@@ -605,7 +504,7 @@ impl<R: Read> AifcReader<R> {
                 // match the new byte_pos
                 if self.ima4_sample_buffer_byte_pos != Some(byte_pos) {
                     // uncompress samples for all channels
-                    let channels_usize = cast::clamp_i16_to_usize(info.channels);
+                    let channels_usize = cast::clamp_i16_to_usize(self.info.channels);
                     for ch in 0..channels_usize {
                         let mut data = [0u8; 34];
                         self.stream.read_exact(&mut data)?;
@@ -635,13 +534,10 @@ impl<R: Read> AifcReader<R> {
     /// Returns an iterator for samples. Returns an error for unsupported sample formats
     /// ([`SampleFormat::Custom`]).
     pub fn samples(&mut self) -> AifcResult<Samples<'_, AifcReader<R>>> {
-        let Some(info) = &self.info else {
-            return Err(AifcError::InvalidReadState);
-        };
-        if let SampleFormat::Custom(_) = info.sample_format {
+        if let SampleFormat::Custom(_) = self.info.sample_format {
             return Err(AifcError::Unsupported);
         }
-        let Some(slen) = info.sample_len else {
+        let Some(slen) = self.info.sample_len else {
             return Err(AifcError::Unsupported);
         };
         // defensive check, slen should always be greater than or equal to sample_read_pos
@@ -688,10 +584,7 @@ impl<R: Read> SampleRead for AifcReader<R> {
     /// Returns a tuple where the first and second elements are the remaining sample count.
     fn size_hint(&self) -> (usize, Option<usize>) {
         // get the lower and upper bound of the sample count
-        let Some(info) = &self.info else {
-            return (0, None);
-        };
-        let Some(slen) = info.sample_len else {
+        let Some(slen) = self.info.sample_len else {
             return (0, None);
         };
         // defensive check, slen should always be greater than or equal to sample_read_pos
@@ -720,10 +613,13 @@ impl<R: Read + Seek> ChunkRead for AifcReader<R> {
 impl<R: Read + Seek> AifcReader<R> {
     /// Creates a new `AifcReader` for a stream implementing the `Read+Seek` traits.
     /// The stream will be seeked forwards and backwards to read data from it.
+    ///
+    /// Header data is read immediately from the inner reader. After that, the stream position
+    /// is at the start of the sample data.
     pub fn new(mut stream: R) -> AifcResult<AifcReader<R>> {
         let ipos = stream.stream_position()?;
         // SeekableRead which can be seeked forwards and backwards
-        let sread = SeekableRead {
+        let mut sread = SeekableRead {
             stream,
             current_pos: ipos,
             initial_pos: ipos,
@@ -751,20 +647,21 @@ impl<R: Read + Seek> AifcReader<R> {
                 Ok(())
             },
         };
+        let hdr = read_header(&mut sread, false)?;
         Ok(AifcReader {
             is_single_pass: false,
             stream: sread,
-            info: None,
-            sample_byte_start_pos: 0,
-            sample_byte_read_pos: 0,
+            info: hdr.info,
+            sample_byte_start_pos: hdr.sample_byte_start_pos,
+            sample_byte_read_pos: hdr.sample_byte_start_pos,
             sample_read_pos: 0,
             needs_to_seek_to_read_pos: false,
-            total_chunk_count: 0,
-            marker_chunkref: None,
-            comments_chunkref: None,
-            id3_chunkref: None,
-            comm_compression_name_start: 0,
-            comm_compression_name_len: 0,
+            total_chunk_count: hdr.total_chunk_count,
+            marker_chunkref: hdr.marker_chunkref,
+            comments_chunkref: hdr.comments_chunkref,
+            id3_chunkref: hdr.id3_chunkref,
+            comm_compression_name_start: hdr.comm_compression_name_start,
+            comm_compression_name_len: hdr.comm_compression_name_len,
             ima4_sample_buffer_byte_pos: None,
             ima4_sample_buffer: [0i16; 128],
             ima4_state: [ AdpcmImaState::new(), AdpcmImaState::new() ]
@@ -778,20 +675,17 @@ impl<R: Read + Seek> AifcReader<R> {
         if self.is_single_pass {
             return Err(AifcError::SeekError);
         }
-        let Some(info) = &self.info else {
-            return Err(AifcError::InvalidReadState);
-        };
-        let Some(sample_len) = info.sample_len else {
+        let Some(sample_len) = self.info.sample_len else {
             return Err(AifcError::Unsupported);
         };
         if sample_position > sample_len {
             return Err(AifcError::SeekError);
         }
-        match info.sample_format {
+        match self.info.sample_format {
             SampleFormat::CompressedIma4 => {
                 // calculate new sample buffer byte pos and if it has changed, set
                 // ima4_sample_buffer_byte_pos to None so that sample reading fills sample buffers
-                let channels_u64 = cast::clamp_i16_to_u64(info.channels);
+                let channels_u64 = cast::clamp_i16_to_u64(self.info.channels);
                 let new_byte_pos = (sample_position / (64*channels_u64)) * (34*channels_u64);
                 let Some(new_byte_pos) = new_byte_pos
                     .checked_add(self.sample_byte_start_pos) else {
@@ -810,7 +704,7 @@ impl<R: Read + Seek> AifcReader<R> {
                 return Err(AifcError::Unsupported);
             },
             _ => {
-                let sample_size = info.sample_format.encoded_size();
+                let sample_size = self.info.sample_format.encoded_size();
                 let Some(new_byte_pos) = sample_position
                     .checked_mul(sample_size)
                     .and_then(|val| val.checked_add(self.sample_byte_start_pos)) else {
@@ -841,7 +735,6 @@ impl<R: Read + Seek> AifcReader<R> {
     /// # fn example() -> aifc::AifcResult<()> {
     /// # let mut rd = std::io::BufReader::new(std::fs::File::open("test.aiff")?);
     /// # let mut aifcreader = aifc::AifcReader::new(&mut rd)?;
-    /// # let info = aifcreader.read_info()?;
     /// let clen = aifcreader.read_compression_name(&mut [])?;
     /// let mut cname = vec![0u8; clen];
     /// aifcreader.read_compression_name(&mut cname)?;
@@ -851,9 +744,6 @@ impl<R: Read + Seek> AifcReader<R> {
     pub fn read_compression_name(&mut self, buf: &mut [u8]) -> AifcResult<usize> {
         if self.is_single_pass {
             return Err(AifcError::SeekError);
-        }
-        if self.info.is_none() {
-            return Err(AifcError::InvalidReadState);
         }
         let clen = usize::from(self.comm_compression_name_len);
         if buf.is_empty() || clen == 0 {
@@ -874,7 +764,6 @@ impl<R: Read + Seek> AifcReader<R> {
     /// # fn example() -> aifc::AifcResult<()> {
     /// # let mut rd = std::io::BufReader::new(std::fs::File::open("test.aiff").expect("open failed"));
     /// # let mut aifcreader = aifc::AifcReader::new(&mut rd)?;
-    /// # let info = aifcreader.read_info()?;
     /// let mut chunks = aifcreader.chunks()?;
     /// while let Some(chdata) = chunks.next() {
     ///     let chdata = chdata?;
@@ -892,9 +781,6 @@ impl<R: Read + Seek> AifcReader<R> {
     pub fn chunks(&mut self) -> AifcResult<Chunks<'_, AifcReader<R>>> {
         if self.is_single_pass {
             return Err(AifcError::SeekError);
-        }
-        if self.info.is_none() {
-            return Err(AifcError::InvalidReadState);
         }
         self.needs_to_seek_to_read_pos = true;
         Ok(Chunks::new(self.total_chunk_count, self))
@@ -922,7 +808,6 @@ impl<R: Read + Seek> AifcReader<R> {
     /// # fn example() -> aifc::AifcResult<()> {
     /// # let mut rd = std::io::BufReader::new(std::fs::File::open("test.aiff")?);
     /// # let mut aifcreader = aifc::AifcReader::new(&mut rd)?;
-    /// # let info = aifcreader.read_info()?;
     /// if let Some(size) = aifcreader.read_chunk_markers(&mut [])? {
     ///     let mut markers_buf = vec![0; size];
     ///     aifcreader.read_chunk_markers(&mut markers_buf)?;
@@ -937,9 +822,6 @@ impl<R: Read + Seek> AifcReader<R> {
     pub fn read_chunk_markers(&mut self, buf: &mut [u8]) -> AifcResult<Option<usize>> {
         if self.is_single_pass {
             return Err(AifcError::SeekError);
-        }
-        if self.info.is_none() {
-            return Err(AifcError::InvalidReadState);
         }
         let Some(chunkref) = self.marker_chunkref.clone() else {
             return Ok(None);
@@ -969,7 +851,6 @@ impl<R: Read + Seek> AifcReader<R> {
     /// # fn example() -> aifc::AifcResult<()> {
     /// # let mut rd = std::io::BufReader::new(std::fs::File::open("test.aiff")?);
     /// # let mut aifcreader = aifc::AifcReader::new(&mut rd)?;
-    /// # let info = aifcreader.read_info()?;
     /// if let Some(size) = aifcreader.read_chunk_comments(&mut [])? {
     ///     let mut comments_buf = vec![0; size];
     ///     aifcreader.read_chunk_comments(&mut comments_buf)?;
@@ -984,9 +865,6 @@ impl<R: Read + Seek> AifcReader<R> {
     pub fn read_chunk_comments(&mut self, buf: &mut [u8]) -> AifcResult<Option<usize>> {
         if self.is_single_pass {
             return Err(AifcError::SeekError);
-        }
-        if self.info.is_none() {
-            return Err(AifcError::InvalidReadState);
         }
         let Some(chunkref) = self.comments_chunkref.clone() else {
             return Ok(None);
@@ -1016,7 +894,6 @@ impl<R: Read + Seek> AifcReader<R> {
     /// # fn example() -> aifc::AifcResult<()> {
     /// # let mut rd = std::io::BufReader::new(std::fs::File::open("test.aiff")?);
     /// # let mut aifcreader = aifc::AifcReader::new(&mut rd)?;
-    /// # let info = aifcreader.read_info()?;
     /// if let Some(size) = aifcreader.read_chunk_id3(&mut [])? {
     ///     let mut id3_buf = vec![0; size];
     ///     aifcreader.read_chunk_id3(&mut id3_buf)?;
@@ -1028,9 +905,6 @@ impl<R: Read + Seek> AifcReader<R> {
     pub fn read_chunk_id3(&mut self, buf: &mut [u8]) -> AifcResult<Option<usize>> {
         if self.is_single_pass {
             return Err(AifcError::SeekError);
-        }
-        if self.info.is_none() {
-            return Err(AifcError::InvalidReadState);
         }
         let Some(chunkref) = self.id3_chunkref.clone() else {
             return Ok(None);
@@ -1053,6 +927,132 @@ impl<R: Read + Seek> AifcReader<R> {
         self.stream.seek(SeekFrom::Start(data_pos))?;
         self.stream.read_exact(buf)?;
         Ok(Some(size))
+    }
+}
+
+struct HeaderData {
+    info: AifcReadInfo,
+    sample_byte_start_pos: u64,
+    marker_chunkref: Option<ChunkRef>,
+    comments_chunkref: Option<ChunkRef>,
+    id3_chunkref: Option<ChunkRef>,
+    total_chunk_count: u32,
+    comm_compression_name_start: u64,
+    comm_compression_name_len: u8
+}
+
+/// Reads info from the data stream. The data is validated and an error is
+/// returned if the stream contains invalid data.
+/// For instance, zero or negative number of channels returns an error.
+fn read_header<R: Read>(stream: &mut SeekableRead<R>, is_single_pass: bool)
+    -> AifcResult<HeaderData> {
+    let (formid, formsize) = read_chunkid_and_size(stream)?;
+    if formid != crate::CHUNKID_FORM {
+        return Err(AifcError::UnrecognizedFormat);
+    }
+    let aiffid = read_chunkid(stream)?;
+    let file_format = match aiffid {
+        crate::CHUNKID_AIFF => FileFormat::Aiff,
+        crate::CHUNKID_AIFC => FileFormat::Aifc,
+        _ => { return Err(AifcError::UnrecognizedFormat); }
+    };
+    let mut pos: u64 = 12;
+    let mut sample_byte_len: u32 = 0;
+    let mut comm_compression_name_start = 0;
+    let mut comm_compression_name_len = 0;
+    let mut sample_byte_start_pos = 0;
+    let mut total_chunk_count = 0;
+    let mut marker_chunkref = None;
+    let mut comments_chunkref = None;
+    let mut id3_chunkref = None;
+    let mut info: Option<AifcReadInfo> = None;
+    let max_pos = rchecked_add(stream.initial_pos, u64::from(formsize))?;
+    while stream.current_pos < max_pos {
+        let (chid, chsize) = read_chunkid_and_size(stream)?;
+        if !is_single_pass {
+            total_chunk_count += 1;
+            let cd = ChunkRef {
+                id: chid,
+                pos,
+                size: chsize
+            };
+            match chid {
+                crate::CHUNKID_MARK => {
+                    // store a reference to the first MARK chunk
+                    if marker_chunkref.is_none() {
+                        marker_chunkref = Some(cd.clone());
+                    }
+                },
+                crate::CHUNKID_COMT => {
+                    // store a reference to the first COMT chunk
+                    if comments_chunkref.is_none() {
+                        comments_chunkref = Some(cd.clone());
+                    }
+                },
+                crate::CHUNKID_ID3 => {
+                    // store a reference to the last ID3 chunk
+                    id3_chunkref = Some(cd.clone());
+                },
+                _ => {}
+            }
+        }
+
+        if chid == crate::CHUNKID_COMM {
+            let (arinfo, cstart, clen) = read_comm_chunk(stream, chsize, file_format, pos)?;
+            info = Some(arinfo);
+            comm_compression_name_start = cstart;
+            comm_compression_name_len = clen;
+
+        } else if chid == crate::CHUNKID_SSND {
+            if chsize < 8 {
+                return Err(AifcError::StdIoError(crate::unexpectedeof()));
+            }
+            let mut offset = [0u8; 4];
+            stream.read_exact(&mut offset)?;
+            let mut start_offset = u32::from_be_bytes(offset);
+            // start_offset can't be greater than chunk size
+            start_offset = start_offset.min(chsize - 8);
+            // note: the SSND blocksize value is not relevant for reading samples
+            let mut blocksize_ignored = [0u8; 4];
+            stream.read_exact(&mut blocksize_ignored)?;
+            let sample_start_pos = rchecked_add(pos, u64::from(start_offset)+8+8)?;
+            sample_byte_len = chsize - 8 - start_offset;
+            sample_byte_start_pos = sample_start_pos;
+            if is_single_pass {
+                // check that COMM has been read - otherwise can't read samples
+                if info.is_none() {
+                    return Err(AifcError::CommChunkNotFoundBeforeSsndChunk);
+                }
+                break; // break out of loop, ready to read samples
+            }
+        }
+        pos = rchecked_add(pos, u64::from(chsize) + 8)?;
+        if !crate::is_even_u32(chsize) { // odd chunk size has one pad byte
+            pos = rchecked_add(pos, 1)?;
+        }
+        stream.seek(SeekFrom::Start(pos))?;
+    }
+    if let Some(i) = &mut info {
+        i.sample_byte_len = sample_byte_len;
+        i.sample_len = i.sample_format.calculate_sample_len(sample_byte_len);
+    }
+    if sample_byte_start_pos > 0 {
+        stream.seek(SeekFrom::Start(sample_byte_start_pos))?;
+    }
+    match &info {
+        Some(i) => {
+            Ok(HeaderData {
+                info: i.clone(),
+                sample_byte_start_pos,
+                marker_chunkref,
+                comments_chunkref,
+                id3_chunkref,
+                total_chunk_count,
+                comm_compression_name_start,
+                comm_compression_name_len
+            })
+        },
+        None => { Err(AifcError::InvalidCommChunk) }
     }
 }
 
@@ -1219,8 +1219,8 @@ mod tests {
     fn test_new_transferring_ownership() -> AifcResult<()> {
         let aifc = create_aifc(8, 1, b"NONE", &[ 11, 12, 13, 14 ]);
         let cursor = Cursor::new(&aifc);
-        let mut reader = AifcReader::new(cursor)?;
-        let info = reader.read_info()?;
+        let reader = AifcReader::new(cursor)?;
+        let info = reader.info();
         assert_eq!(info.sample_format, SampleFormat::I8);
         Ok(())
     }
@@ -1229,8 +1229,8 @@ mod tests {
     fn test_new_with_mut_ref() -> AifcResult<()> {
         let aifc = create_aifc(8, 1, b"NONE", &[ 11, 12, 13, 14 ]);
         let mut cursor = Cursor::new(&aifc);
-        let mut reader = AifcReader::new(&mut cursor)?;
-        let info = reader.read_info()?;
+        let reader = AifcReader::new(&mut cursor)?;
+        let info = reader.info();
         assert_eq!(info.sample_format, SampleFormat::I8);
         Ok(())
     }
@@ -1240,7 +1240,7 @@ mod tests {
         let aifc = create_aifc(8, 1, b"NONE", &[ 11, 12, 13, 14 ]);
         let mut slice: &[u8] = aifc.as_ref();
         let mut reader = AifcReader::new_single_pass(&mut slice)?;
-        let info = reader.read_info()?;
+        let info = reader.info();
         assert_eq!(info.file_format, FileFormat::Aifc);
         assert_eq!(info.sample_format, SampleFormat::I8);
         assert_eq!(reader.read_sample()?, Some(Sample::I8(11)));
@@ -1263,8 +1263,8 @@ mod tests {
             0, 0,    // compression name
         ];
         let mut slice: &[u8] = aifc.as_ref();
-        let mut reader = AifcReader::new_single_pass(&mut slice)?;
-        assert!(matches!(reader.read_info(), Err(AifcError::CommChunkNotFoundBeforeSsndChunk)));
+        assert!(matches!(AifcReader::new_single_pass(&mut slice),
+            Err(AifcError::CommChunkNotFoundBeforeSsndChunk)));
         Ok(())
     }
 
@@ -1273,7 +1273,7 @@ mod tests {
         let aifc = create_aifc(8, 1, b"NONE", &[ 11, 12, 13, 14 ]);
         let cursor = Cursor::new(&aifc);
         let mut reader = AifcReader::new(cursor)?;
-        let info = reader.read_info()?;
+        let info = reader.info();
         assert_eq!(info.sample_format, SampleFormat::I8);
         assert_eq!(reader.read_sample()?, Some(Sample::I8(11)));
         let mut inner_cursor = reader.into_inner();
@@ -1288,7 +1288,7 @@ mod tests {
         let aifc = create_aifc(8, 1, b"NONE", &[ 11, 12, 13, 14 ]);
         let cursor = Cursor::new(&aifc);
         let mut reader = AifcReader::new(cursor)?;
-        let info = reader.read_info()?;
+        let info = reader.info();
         assert_eq!(info.sample_format, SampleFormat::I8);
         assert_eq!(reader.read_sample()?, Some(Sample::I8(11)));
         let ref_cursor = reader.get_ref();
@@ -1302,7 +1302,7 @@ mod tests {
         let aifc = create_aifc(8, 1, b"NONE", &[ 11, 12, 13, 14 ]);
         let cursor = Cursor::new(&aifc);
         let mut reader = AifcReader::new(cursor)?;
-        let info = reader.read_info()?;
+        let info = reader.info();
         assert_eq!(info.sample_format, SampleFormat::I8);
         assert_eq!(reader.read_sample()?, Some(Sample::I8(11)));
         let inner_cursor = reader.get_mut();
@@ -1318,7 +1318,7 @@ mod tests {
         let aifc = create_aifc(8, 1, b"NONE", &[ 11, 12, 13, 14 ]);
         let cursor = Cursor::new(&aifc);
         let mut reader = AifcReader::new(cursor)?;
-        let info = reader.read_info()?;
+        let info = reader.info();
         assert_eq!(info.sample_format, SampleFormat::I8);
         let cr = reader.get_mut();
         let mut buf = [0u8; 1];
@@ -1328,34 +1328,13 @@ mod tests {
         let aifc = create_aifc(8, 1, b"NONE", &[ 11, 12, 13, 14 ]);
         let cursor = Cursor::new(&aifc);
         let mut reader = AifcReader::new_single_pass(cursor)?;
-        let info = reader.read_info()?;
+        let info = reader.info();
         assert_eq!(info.sample_format, SampleFormat::I8);
         let cr = reader.get_mut();
         let mut buf = [0u8; 1];
         assert_eq!(cr.read(&mut buf)?, 1);
         assert_eq!(buf[0], 11);
 
-        Ok(())
-    }
-
-    #[test]
-    fn test_read_info_called_twice() -> AifcResult<()> {
-        let aifc = create_aifc(8, 1, b"NONE", &[ 1, 2, 3, 4, 5, 6, 7, 8 ]);
-        {
-            let mut cursor = std::io::Cursor::new(&aifc);
-            let mut reader = AifcReader::new(&mut cursor)?;
-            reader.read_info()?;
-            assert!(matches!(reader.read_info(), Err(AifcError::InvalidReadState)));
-            assert_eq!(reader.read_sample()?.expect("no sample?"), Sample::I8(1));
-            assert_eq!(reader.chunks()?.count(), 3);
-        }
-        {
-            let mut cursor = std::io::Cursor::new(&aifc);
-            let mut reader = AifcReader::new_single_pass(&mut cursor)?;
-            reader.read_info()?;
-            assert!(matches!(reader.read_info(), Err(AifcError::InvalidReadState)));
-            assert_eq!(reader.read_sample()?.expect("no sample?"), Sample::I8(1));
-        }
         Ok(())
     }
 
@@ -1370,8 +1349,7 @@ mod tests {
             0x40, 0x0E, 0xAC, 0x44, 0x00, 0x00, 0x00, 0x00, 0x00, // sample_rate missing byte
         ];
         let mut cursor = std::io::Cursor::new(&aifc);
-        let mut reader = AifcReader::new(&mut cursor)?;
-        assert!(matches!(reader.read_info(), Err(AifcError::InvalidCommChunk)));
+        assert!(matches!(AifcReader::new(&mut cursor), Err(AifcError::InvalidCommChunk)));
 
         // minimal AIFF with enough data
         let aifc = vec![
@@ -1382,8 +1360,8 @@ mod tests {
             0x40, 0x0E, 0xAC, 0x44, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // sample_rate
         ];
         let mut cursor = std::io::Cursor::new(&aifc);
-        let mut reader = AifcReader::new(&mut cursor)?;
-        reader.read_info()?;
+        let reader = AifcReader::new(&mut cursor);
+        assert!(reader.is_ok());
 
         // minimal AIFF-C, not enough data
         let aifc = vec![
@@ -1397,8 +1375,7 @@ mod tests {
             // compression name missing
         ];
         let mut cursor = std::io::Cursor::new(&aifc);
-        let mut reader = AifcReader::new(&mut cursor)?;
-        assert!(matches!(reader.read_info(), Err(AifcError::InvalidCommChunk)));
+        assert!(matches!(AifcReader::new(&mut cursor), Err(AifcError::InvalidCommChunk)));
 
         // minimal AIFF-C, compression name padding byte missing
         let aifc = vec![
@@ -1412,8 +1389,8 @@ mod tests {
             0    // compression name
         ];
         let mut cursor = std::io::Cursor::new(&aifc);
-        let mut reader = AifcReader::new(&mut cursor)?;
-        reader.read_info()?;
+        let reader = AifcReader::new(&mut cursor);
+        assert!(reader.is_ok());
 
         // minimal AIFF-C, compression name with a padding byte
         let aifc = vec![
@@ -1427,8 +1404,8 @@ mod tests {
             0, 0    // compression name
         ];
         let mut cursor = std::io::Cursor::new(&aifc);
-        let mut reader = AifcReader::new(&mut cursor)?;
-        reader.read_info()?;
+        let reader = AifcReader::new(&mut cursor);
+        assert!(reader.is_ok());
         Ok(())
     }
 
@@ -1449,7 +1426,6 @@ mod tests {
         ];
         let mut cursor = std::io::Cursor::new(&aifc);
         let mut reader = AifcReader::new(&mut cursor)?;
-        reader.read_info()?;
         // the MARK chunk is outside the FORM size, so it isn't found
         assert!(reader.read_chunk_markers(&mut [])?.is_none());
         Ok(())
@@ -1469,7 +1445,7 @@ mod tests {
         {
             let mut cursor = std::io::Cursor::new(&aifc);
             let mut reader = AifcReader::new(&mut cursor)?;
-            let info = reader.read_info()?;
+            let info = reader.info();
             assert_eq!(info.sample_len, Some(2));
             assert_eq!(reader.read_sample()?, Some(Sample::I32(1)));
             assert_eq!(reader.read_sample()?, Some(Sample::I32(2)));
@@ -1495,7 +1471,6 @@ mod tests {
         ];
         let mut cursor = std::io::Cursor::new(&aifc);
         let mut reader = AifcReader::new(&mut cursor)?;
-        let _ = reader.read_info()?;
         // check that size_hint() and len() are decreasing
         {
             let mut siter = reader.samples()?;
@@ -1541,7 +1516,6 @@ mod tests {
         ];
         let mut cursor = std::io::Cursor::new(&aifc);
         let mut reader = AifcReader::new(&mut cursor)?;
-        let _ = reader.read_info()?;
         assert!(matches!(reader.samples(), Err(AifcError::Unsupported)));
 
         Ok(())
@@ -1564,7 +1538,6 @@ mod tests {
         ];
         let mut cursor = std::io::Cursor::new(&aifc);
         let mut reader = AifcReader::new(&mut cursor)?;
-        reader.read_info()?;
         assert_eq!(reader.read_sample()?.expect("no sample?"), Sample::I8(1));
         let clen = reader.read_compression_name(&mut [])?;
         let mut cname = vec![0u8; clen];
@@ -1587,7 +1560,6 @@ mod tests {
         ];
         let mut cursor = std::io::Cursor::new(&aifc);
         let mut reader = AifcReader::new(&mut cursor)?;
-        reader.read_info()?;
         let clen = reader.read_compression_name(&mut [])?;
         let mut cname = vec![0u8; clen];
         reader.read_compression_name(&mut cname)?;
@@ -1608,7 +1580,6 @@ mod tests {
         ];
         let mut cursor = std::io::Cursor::new(&aifc);
         let mut reader = AifcReader::new(&mut cursor)?;
-        reader.read_info()?;
         let clen = reader.read_compression_name(&mut [])?;
         let mut cname = vec![0u8; clen];
         reader.read_compression_name(&mut cname)?;
@@ -1623,7 +1594,6 @@ mod tests {
         let mut cursor = std::io::Cursor::new(&data);
         read_dummy_data(&mut cursor, 6)?;
         let mut reader = AifcReader::new(&mut cursor)?;
-        reader.read_info()?;
         let mut iter = reader.chunks()?;
         let mut test_chunk_refs = vec![
             ChunkRef { pos: 12, size: 4, id: *b"FVER" },
@@ -1657,7 +1627,6 @@ mod tests {
         let mut cursor = std::io::Cursor::new(&data);
         read_dummy_data(&mut cursor, 6)?;
         let mut reader = AifcReader::new(&mut cursor)?;
-        reader.read_info()?;
         assert_eq!(reader.read_sample()?.expect("no sample?"), Sample::I8(1));
         assert_eq!(reader.read_sample()?.expect("no sample?"), Sample::I8(2));
         let mut iter = reader.chunks()?;
@@ -1685,7 +1654,6 @@ mod tests {
         ];
         let mut cursor = std::io::Cursor::new(&aifc);
         let mut reader = AifcReader::new(&mut cursor)?;
-        reader.read_info()?;
         if let Some(size) = reader.read_chunk_markers(&mut [])? {
             let mut buf = vec![0; size];
             reader.read_chunk_markers(&mut buf)?;
@@ -1722,7 +1690,6 @@ mod tests {
         ];
         let mut cursor = std::io::Cursor::new(&aifc);
         let mut reader = AifcReader::new(&mut cursor)?;
-        reader.read_info()?;
         if let Some(size) = reader.read_chunk_comments(&mut [])? {
             let mut buf = vec![0; size];
             reader.read_chunk_comments(&mut buf)?;
@@ -1759,7 +1726,6 @@ mod tests {
         ];
         let mut cursor = std::io::Cursor::new(&aifc);
         let mut reader = AifcReader::new(&mut cursor)?;
-        reader.read_info()?;
         if let Some(size) = reader.read_chunk_id3(&mut [])? {
             let mut buf = vec![0; size];
             reader.read_chunk_id3(&mut buf)?;
@@ -1781,7 +1747,6 @@ mod tests {
         let mut cursor = Cursor::new(&aifc);
         read_dummy_data(&mut cursor, 3)?;
         let mut reader = AifcReader::new(&mut cursor)?;
-        let _ = reader.read_info()?;
         assert_eq!(reader.read_sample()?, Some(Sample::I16(1)));
         assert_eq!(reader.read_sample()?, Some(Sample::I16(2)));
         reader.seek(0)?;
@@ -1804,7 +1769,6 @@ mod tests {
         let aifc = create_aifc(8, 1, b"wxyz", &[ 1, 2, 3, 4, 5, 6, 7, 8 ]);
         let mut cursor = Cursor::new(&aifc);
         let mut reader = AifcReader::new(&mut cursor)?;
-        let _ = reader.read_info()?;
         assert!(matches!(reader.seek(0), Err(AifcError::Unsupported)));
         assert!(matches!(reader.seek(1), Err(AifcError::Unsupported)));
 
@@ -1845,7 +1809,7 @@ mod tests {
         let mut cursor = Cursor::new(&aifc);
         read_dummy_data(&mut cursor, 3)?;
         let mut reader = AifcReader::new(&mut cursor)?;
-        let info = reader.read_info()?;
+        let info = reader.info();
         assert_eq!(info.sample_len, Some(128));
         // seek the first packet (the first 64 samples)
         assert_eq!(reader.read_sample()?, Some(Sample::I16(1)));
@@ -1909,7 +1873,7 @@ mod tests {
         let mut cursor = Cursor::new(&aifc);
         read_dummy_data(&mut cursor, 3)?;
         let mut reader = AifcReader::new(&mut cursor)?;
-        let info = reader.read_info()?;
+        let info = reader.info();
         assert_eq!(info.sample_len, Some(256));
         // seek the first 2 packets (the first 128 samples for left and right)
         assert_eq!(reader.read_sample()?, Some(Sample::I16(11))); // left
@@ -1958,7 +1922,6 @@ mod tests {
         // read dummy data before aifc data
         read_dummy_data(&mut cursor, 6)?;
         let mut reader = AifcReader::new(&mut cursor)?;
-        reader.read_info()?;
         let clen = reader.read_compression_name(&mut [])?;
         let mut cname = vec![0u8; clen];
         reader.read_compression_name(&mut cname)?;

@@ -9,13 +9,13 @@
 //!
 //! # Examples
 //!
-//! Reading samples:
+//! Reading audio info and samples:
 //!
 //! ```no_run
 //! # fn example() -> aifc::AifcResult<()> {
 //! let mut stream = std::io::BufReader::new(std::fs::File::open("test.aiff")?);
 //! let mut reader = aifc::AifcReader::new(&mut stream)?;
-//! let info = reader.read_info()?;
+//! let info = reader.info();
 //! for sample in reader.samples()? {
 //!     println!("Got sample {:?}", sample.expect("Sample read error"));
 //! }

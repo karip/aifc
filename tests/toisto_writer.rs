@@ -303,13 +303,8 @@ fn test(src_json: &AiffJson) -> aifc::AifcResult<()> {
     }
     // additional test for desc.num_sample_frames
     let mut cursor = std::io::Cursor::new(&buf);
-    let mut reader = aifc::AifcReader::new(&mut cursor)?;
-    let desc = match reader.read_info() {
-        Err(error) => {
-            return other_error(format!("Can't read the created AIFF file: {:?}", error));
-        },
-        Ok(val) => val
-    };
+    let reader = aifc::AifcReader::new(&mut cursor)?;
+    let desc = reader.info();
     // source num_sample_frames is either samples_per_channel or packet count per channel for ima4
     let src_num_sample_frames = if desc.sample_format == SampleFormat::CompressedIma4 {
         src_json.samples_per_channel.div_ceil(64)

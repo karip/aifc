@@ -31,10 +31,14 @@ fn main() {
     let mut rd = BufReader::new(File::open(filename)
         .expect("Failed to open file for reading"));
     let mut reader = match reader_type.as_ref() {
-        "single" => aifc::AifcReader::new_single_pass(&mut rd)
-            .expect("Can't create reader"),
-        "multi" => aifc::AifcReader::new(&mut rd)
-            .expect("Can't create reader"),
+        "single" => match aifc::AifcReader::new_single_pass(&mut rd) {
+            Ok(r) => r,
+            Err(e) => { print_error(e); std::process::exit(0); }
+        },
+        "multi" => match aifc::AifcReader::new(&mut rd) {
+            Ok(r) => r,
+            Err(e) => { print_error(e); std::process::exit(0); }
+        },
         _ => { eprintln!("Unknown reader type: {}", reader_type); std::process::exit(1); }
     };
 
@@ -42,4 +46,16 @@ fn main() {
 
     let json = jsonhelper::jsonify(&mut reader).expect("Failed to jsonify");
     println!("{}", json);
+}
+
+fn print_error(e: aifc::AifcError) {
+    match e {
+        aifc::AifcError::StdIoError(e) => {
+            println!("{{ \"error\": {:?} }}", e.to_string());
+        },
+        _ => {
+            let msg = format!("{:?}", e);
+            println!("{{ \"error\": \"{}\" }}", msg.replace("\"", "'"));
+        },
+    };
 }

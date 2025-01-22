@@ -28,7 +28,7 @@ Reading AIFF/AIFF-C file:
 ```rust, no_run
 let mut stream = std::io::BufReader::new(std::fs::File::open("test.aiff").expect("Open failed"));
 let mut reader = aifc::AifcReader::new(&mut stream).expect("Can't create reader");
-let info = reader.read_info().expect("Can't read header");
+let info = reader.info();
 for sample in reader.samples().expect("Can't iterate samples") {
     println!("Got sample {:?}", sample.expect("Sample read error"));
 }
