@@ -1,6 +1,6 @@
 [package]
 name = "aifc"
-version = "0.5.3"
+version = "0.6.0"
 description = "Reader and writer for the AIFF and AIFF-C audio format"
 repository = "https://github.com/karip/aifc"
 license = "MIT OR Apache-2.0"
