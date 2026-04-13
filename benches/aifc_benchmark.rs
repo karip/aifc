@@ -1,4 +1,5 @@
-use criterion::{criterion_group, criterion_main, black_box, Criterion};
+use criterion::{criterion_group, criterion_main, Criterion};
+use std::hint::black_box;
 use std::io::Cursor;
 use aifc::AifcReader;
 

@@ -1,8 +1,8 @@
 [package]
 name = "aifc-tinyaudio"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 
 [dependencies]
 aifc = { path = "../.." }
-tinyaudio = "1.1.0"
+tinyaudio = "2.0.0"
