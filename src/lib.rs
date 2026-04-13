@@ -36,15 +36,15 @@
 //! # }
 //! ```
 //!
-//! # Text decoding
+//! # Text encoding
 //!
 //! AIFF and AIFF-C originally support ASCII only text in their metadata chunks (NAME, ANNO, etc.).
 //! In addition to ASCII, older apps may have used ISO-8859-1 and newer apps may have used UTF-8.
 //!
-//! A text decoder could try to decode UTF-8 first with
-//! [`String::from_utf8()`](String::from_utf8) and if it fails, try to decode ISO-8859-1,
-//! and if it fails, decode ASCII. Or it could just assume that everything is UTF-8 and
-//! call [`String::from_utf8_lossy()`](String::from_utf8_lossy).
+//! Since the text encoding is unknown, this crate handles text as bytes. A text decoder could
+//! try to decode bytes as UTF-8 first with [`String::from_utf8()`](String::from_utf8) and if it
+//! fails, try to decode ISO-8859-1, and if it fails, decode ASCII. Or it could just assume that
+//! everything is UTF-8 and call [`String::from_utf8_lossy()`](String::from_utf8_lossy).
 //!
 //! When writing new files, the ID3 chunk has proper support for UTF-8 text and can be used
 //! as a replacement for most metadata chunks.
@@ -302,7 +302,7 @@ impl SampleFormat {
 /// Checks if the given data is the start of AIFF or AIFF-C.
 ///
 /// Only the first 12 bytes are checked. If the data length is less than 12 bytes,
-/// then the result is always None.
+/// then the result is always `None`.
 ///
 /// # Examples
 ///

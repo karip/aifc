@@ -488,7 +488,8 @@ impl<W: Write + Seek> AifcWriter<W> {
     ///
     /// The `frame_count` is passed in so that the writer can update the header (num_frames) to
     /// a correct value when `flush()` or `finalize()` is called.
-    /// `frame_count` must be the total number of audio frames (not audio samples) written so far.
+    /// `frame_count` must be the total number of audio frames (not audio samples) written so far
+    /// including `data` in this call.
     pub fn write_samples_raw(&mut self, data: &[u8], frame_count: u32) -> AifcResult<()> {
         if self.state != WriteState::SamplesNotWritten &&
             self.state != WriteState::WritingRawSamples {
