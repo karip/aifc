@@ -24,7 +24,7 @@ jobs:
         with:
           submodules: recursive
       - name: Install Rust matching rust-version (MSRV)
-        run: rustup install 1.87.0 && rustup default 1.87.0
+        run: rustup install 1.87.0 && rustup default 1.87.0 && rustup component add clippy
       - name: Install cross-compilation tools
         uses: taiki-e/setup-cross-toolchain-action@v1
         with:
