@@ -7,6 +7,9 @@ if [ ! -d "toisto-aiff-test-suite/tests" ]; then
     exit 1
 fi
 
+# print version so the user sees it (should match MSRV)
+rustc --version
+
 # ensure clippy gives no errors or warnings
 cargo clippy -- -D warnings
 
