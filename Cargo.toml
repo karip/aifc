@@ -6,7 +6,8 @@ repository = "https://github.com/karip/aifc"
 license = "MIT OR Apache-2.0"
 keywords = ["audio", "aiff", "codec"]
 categories = ["multimedia::audio", "multimedia::encoding"]
-edition = "2021"
+edition = "2024"
+rust-version = "1.87.0"
 exclude = [
     "toisto-aiff-test-suite/*",
 ]
